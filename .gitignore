@@ -1,0 +1,2 @@
+#ignore .env since it contains bot's token
+.env
