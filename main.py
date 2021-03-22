@@ -12,28 +12,49 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import urllib
+import boto3
+
+from keep_running import keep_running
+
+
 
 client = discord.Client()
 
 sad_words = ["sad", "depressed", "unhappy", "angry", "miserable", ]
 
 starter_encouragements = [
-  "Cheer up!",
+  "Try to cheer up!",
   "Hang in there.",
-  "You are a great guy!",
+  "You are a great person!",
   "Breathe deeply and try to relax."
 ]
 
+if "responding" not in db.keys():
+  db["responding"] = True
+
 def get_quote():
   response = requests.get("https://zenquotes.io/api/random")
-  # json.loads() converts the response from API to JSON
   json_data = json.loads(response.text)
-  quote = json_data[0]['q'] + " -" + json_data[0]['a']
+  quote = json_data[0]["q"] + " -" + json_data[0]["a"]
   return(quote)
+
+def update_encouragements(encouraging_message):
+  if "encouragements" in db.keys():
+    encouragements = db["encouragements"]
+    encouragements.append(encouraging_message)
+    db["encouragements"] = encouragements
+  else:
+    db["encouragements"] = [encouraging_message]
+
+def delete_encouragment(index):
+  encouragements = db["encouragements"]
+  if len(encouragements) > index:
+    del encouragements[index]
+  db["encouragements"] = encouragements
 
 @client.event
 async def on_ready():
-  print('We have logged in as {0.user}'.format(client))
+  print("We have logged in as {0.user}".format(client))
 
 @client.event
 async def on_message(message):
@@ -42,12 +63,47 @@ async def on_message(message):
 
   msg = message.content
 
-  if msg.startswith('!inspire'):
+  if msg.startswith("$inspire"):
     quote = get_quote()
     await message.channel.send(quote)
+
+  if db["responding"]:
+    options = starter_encouragements
+    if "encouragements" in db.keys():
+      options = options + db["encouragements"]
+
+    if any(word in msg for word in sad_words):
+      await message.channel.send(random.choice(options))
+
+  if msg.startswith("$new"):
+    encouraging_message = msg.split("$new ",1)[1]
+    update_encouragements(encouraging_message)
+    await message.channel.send("New encouraging message added.")
+
+  if msg.startswith("$del"):
+    encouragements = []
+    if "encouragements" in db.keys():
+      index = int(msg.split("$del",1)[1])
+      delete_encouragment(index)
+      encouragements = db["encouragements"]
+    await message.channel.send(encouragements)
+
+  if msg.startswith("$list"):
+    encouragements = []
+    if "encouragements" in db.keys():
+      encouragements = db["encouragements"]
+    await message.channel.send(encouragements)
     
-  if any(word in msg for word in sad_words):
-    await message.channel.send(random.choice(starter_encouragements))
+  if msg.startswith("$responding"):
+    value = msg.split("$responding ",1)[1]
 
+    if value.lower() == "true":
+      db["responding"] = True
+      await message.channel.send("Responding is on.")
+    else:
+      db["responding"] = False
+      await message.channel.send("Responding is off.")
 
-client.run('ODEzODU2NjUwMzA1ODYzNzUx.YDVZEg.3UlLvAzlJuAzQn-LrPRf9owYlYo')
+keep_running()
+
+client.run(os.getenv("TOKEN"))
